@@ -56,7 +56,7 @@ it('9 players play a complete game in real time', async () => {
   await hostState.until((v) => v.pub.players.length === 9);
 
   await call(host, 'host:start');
-  await Promise.all(players.map((p) => p.st.until((v) => v.pub.phase === 'DRAWING' && !!v.me.prompt)));
+  await Promise.all(players.map((p) => p.st.until((v: PlayerView) => v.pub.phase === 'DRAWING' && !!v.me.prompt)));
   const prompts = players.map((p) => p.st.get().me.prompt!);
   expect(new Set(prompts).size).toBe(9);
   expect(JSON.stringify(screenState.get())).not.toContain(prompts[0]);
@@ -87,7 +87,7 @@ it('9 players play a complete game in real time', async () => {
     await expect(call(others[0].s, 'player:answer', { text: 'מאוחר מדי' })).rejects.toThrow();
     expect(voting.options!.filter((o) => o.text === 'תשובה זהה').length).toBe(1);
     await Promise.all(others.map(async (p) => {
-      const me = (await p.st.until((x) => x.pub.phase === 'VOTING' && x.pub.drawingIndex === d)).me;
+      const me = (await p.st.until((x: PlayerView) => x.pub.phase === 'VOTING' && x.pub.drawingIndex === d)).me;
       const choice = voting.options!.find((o) => !me.myOptionIds.includes(o.id))!;
       await call(p.s, 'player:vote', { optionId: choice.id });
     }));
