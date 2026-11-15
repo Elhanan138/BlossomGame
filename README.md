@@ -58,45 +58,31 @@ npm run build && npm run e2e
 
 בדיקת E2E ב-Playwright: מנחה, מסך הקרנה ו-3 טלפונים ברוחבים 320/375/430 משחקים משחק שלם דרך הממשק. בודקת שאין שגיאות בקונסול ושאין גלילה אופקית, ושומרת צילומי מסך ב-`test-results/`.
 
-## פריסה
+## פריסה (Vercel + Neon)
 
-המערכת היא שרת Node אחד עם WebSockets ומצב משחק בזיכרון. צריך פלטפורמה שמריצה תהליך קבוע (לא Serverless).
+- **אתר חי:** https://blossom-kishkushon.vercel.app
+- **Vercel:** הפרויקט `blossom-game` מחובר לריפו, וכל push ל-`main` נפרס אוטומטית. הפונקציות נמצאות ב-`api/` ורצות באזור fra1, והממשק נבנה עם `vite build`.
+- **Neon:** הפרויקט `blossom-game` (eu-central-1). הטבלאות `rooms` ו-`images`, והסכמה ב-`src/server/store.ts`. ליצירה מחדש: `DATABASE_URL=... npm run db:migrate`.
+- **Health check:** `GET /api/healthz` מבצע שאילתה אמיתית מול מסד הנתונים.
 
-**Render (מומלץ, הכי פשוט):** מחברים את הריפו, Render מזהה את `render.yaml`, ובונה ומריץ. יש לבחור תוכנית שלא נרדמת (Starter), כי תוכנית חינמית נרדמת אחרי חוסר פעילות ומשחק פעיל יאבד.
-
-**Docker (Fly.io, Railway, כל VPS):**
-
-```bash
-docker build -t blossom-game .
-```
-
-```bash
-docker run -p 3000:3000 blossom-game
-```
-
-HTTPS/WSS מגיע מהפלטפורמה (Render/Fly/Railway). בשרת עצמאי שמים לפניו reverse proxy (Caddy/Nginx) עם תמיכה ב-WebSocket.
-
-חשוב: להריץ **מופע אחד** בלבד. מצב החדרים נשמר בזיכרון של התהליך.
+אפשר להריץ גם כשרת Node רגיל (Docker / `npm start`): עם `DATABASE_URL` הוא עובד מול Neon, ובלעדיו המצב נשמר בזיכרון.
 
 ### משתני סביבה
 
-ראו `.env.example`:
-
-| משתנה | ברירת מחדל | תיאור |
-|---|---|---|
-| `PORT` | 3000 | פורט השרת |
-| `CLIENT_ORIGIN` | ריק | Origins מורשים ל-Socket.IO (רק אם הממשק מוגש מדומיין אחר) |
-| `MAX_ROOMS` | 300 | מקסימום חדרים פעילים |
-| `ROOM_TTL_MINUTES` | 240 | חדר לא פעיל נמחק אחרי זמן זה (חדר ריק נמחק אחרי 30 דק׳) |
-
-Health check: `GET /healthz`.
+| משתנה | תיאור |
+|---|---|
+| `DATABASE_URL` | מחרוזת חיבור ל-Neon (מוגדרת ב-Vercel כ-Sensitive) |
+| `MAX_ROOMS` | מקסימום חדרים פעילים (ברירת מחדל 300) |
+| `ROOM_TTL_MINUTES` | חדר לא פעיל נמחק אחרי זמן זה (ברירת מחדל 240) |
 
 ## ארכיטקטורה
 
 ```
 src/shared/types.ts   טיפוסים משותפים: שלבים, הגדרות, Views ואירועים
 src/server/game.ts    מכונת המצבים של המשחק (Room): שלבים, טיימרים, ניקוד, הרשאות
-src/server/index.ts   Express + Socket.IO, ניהול חדרים, Rate limiting, ניקוי חדרים
+src/server/api.ts     שכבת ה-API (טעינה/שמירה עם גרסאות, טיימרים, נוכחות)
+src/server/store.ts   אחסון: Neon Postgres או זיכרון
+api/                  Vercel Functions: rpc, img, healthz
 src/server/prompts.ts ~160 ביטויים מקוריים + שאלות שיחה למצב גיבוש
 src/client/           React + Vite: Landing, Player, Host, ScreenView, DrawCanvas
 ```
@@ -125,7 +111,7 @@ src/client/           React + Vite: Landing, Player, Host, ScreenView, DrawCanva
 
 ## מגבלות ידועות
 
-- המצב בזיכרון: הפעלה מחדש של השרת מוחקת משחקים פעילים. אין לפרוס בזמן אירוע.
+- הסנכרון מבוסס בקשות כל שנייה, כך שעדכון יכול להגיע באיחור של עד שנייה.
 - הצטרפות באמצע משחק אינה אפשרית (רק בלובי). משתתף קיים יכול לחזור.
 - ציור חופשי על קנבס אינו נגיש לחלוטין לקוראי מסך. שאר הממשק תומך במקלדת ובקורא מסך.
 - נבדק ב-Chromium (כולל אמולציית טלפון). מומלץ לבדוק גם על iPhone ו-Android אמיתיים לפני האירוע.
