@@ -1,11 +1,12 @@
 import { randomBytes, randomInt } from 'node:crypto';
-import { PROMPTS, TEAM_QUESTIONS } from './prompts.js';
+import { PROMPTS, TEAM_QUESTIONS } from './prompts';
 import {
   DEFAULT_SETTINGS, LIMITS,
   type FinalHighlights, type GamePhase, type GameSettings, type HostView, type PlayerPrivate,
   type PublicState, type RevealOption, type ScoreLine,
-} from '../shared/types.js';
+} from '../shared/types';
 
+const validRef = (r: unknown) => (typeof r === 'string' && r.length > 0 && r.length < 400 ? r : fail('הציור לא תקין'));
 export class GameError extends Error {}
 const fail = (msg: string): never => { throw new GameError(msg); };
 
@@ -47,7 +48,7 @@ export function validName(raw: unknown): string {
   if ([...name].length > LIMITS.nameMax) fail(`השם ארוך מדי (עד ${LIMITS.nameMax} תווים)`);
   return name;
 }
-function validImage(img: unknown): string {
+export function validImage(img: unknown): string {
   if (typeof img !== 'string' || !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(img)) fail('הציור לא תקין');
   if ((img as string).length > LIMITS.drawingMaxBytes) fail('הציור גדול מדי');
   return img as string;
@@ -81,6 +82,7 @@ export class Room {
   question: string | null = null;
   highlights: FinalHighlights | null = null;
   lastActivity: number;
+  seen: Record<string, number> = {};
   private usedPrompts = new Set<string>();
   private usedQuestions = new Set<string>();
   private roundStartScores = new Map<string, number>();
@@ -89,7 +91,7 @@ export class Room {
   private lies: { text: string; authors: string[]; fooled: number }[] = [];
   private timer: unknown = null;
 
-  constructor(public code: string, settings?: Partial<GameSettings>, public onChange: () => void = () => {}, private clock: Clock = realClock) {
+  constructor(public code: string, settings?: Partial<GameSettings>, public onChange: () => void = () => {}, public clock: Clock = realClock) {
     this.settings = sanitizeSettings(settings);
     this.lastActivity = clock.now();
   }
@@ -142,6 +144,30 @@ export class Room {
     }, Math.max(0, this.deadline - this.clock.now()));
   }
   private autoSeconds(s: number) { return this.settings.autoAdvance ? s : null; }
+  /** Serverless mode: apply any deadlines that passed since the last request. */
+  tick() {
+    for (let i = 0; i < 20 && !this.paused && this.deadline != null && this.clock.now() >= this.deadline; i++) this.endPhase();
+  }
+  /** Serverless presence: players are connected if seen recently. */
+  applyPresence(seen: Record<string, number>, windowMs = 15000) {
+    const now = this.clock.now();
+    let changed = false;
+    for (const p of this.players.values()) {
+      const c = now - (seen[p.id] ?? 0) < windowMs;
+      if (c !== p.connected) { p.connected = c; changed = true; }
+    }
+    if (changed && !this.paused && this.allDone()) this.endPhase();
+  }
+  serialize(): string {
+    const { onChange, clock, timer, ...data } = this as any;
+    return JSON.stringify(data, (_k, v) => (v instanceof Map ? { __map: [...v] } : v instanceof Set ? { __set: [...v] } : v));
+  }
+  static deserialize(json: string, clock: Clock): Room {
+    const data = JSON.parse(json, (_k, v) => (v && typeof v === 'object' && '__map' in v ? new Map(v.__map) : v && typeof v === 'object' && '__set' in v ? new Set(v.__set) : v));
+    const r = Object.assign(Object.create(Room.prototype), data) as Room;
+    Object.assign(r, { clock, onChange: () => {}, timer: null });
+    return r;
+  }
   dispose() { if (this.timer) this.clock.clear(this.timer); this.timer = null; }
 
   // ---------- players ----------
@@ -212,14 +238,14 @@ export class Room {
   saveDraft(pid: string, img: unknown) {
     if (this.phase !== 'DRAWING' || this.submittedDrawings.has(pid)) return;
     this.player(pid);
-    this.drafts.set(pid, validImage(img));
+    this.drafts.set(pid, validRef(img));
     this.touch();
   }
   submitDrawing(pid: string, img: unknown) {
     if (this.phase !== 'DRAWING') fail('זמן הציור הסתיים');
     this.player(pid);
     if (this.submittedDrawings.has(pid)) fail('הציור כבר הוגש');
-    this.drafts.set(pid, validImage(img));
+    this.drafts.set(pid, validRef(img));
     this.submittedDrawings.add(pid);
     if (this.allDone()) this.endPhase(); else this.changed();
   }

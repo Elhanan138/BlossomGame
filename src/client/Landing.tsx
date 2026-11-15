@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { call, go, keys, store } from './net';
+import { rpc, go, keys, store } from './net';
 import { Brand } from './ui';
 
 const Doodle = ({ d, style }: { d: string; style: React.CSSProperties }) => (
@@ -20,7 +20,7 @@ export default function Landing({ code: initialCode = '' }: { code?: string }) {
     setErr(''); setBusy(true);
     try {
       const c = code.trim().toUpperCase();
-      const r = await call<{ playerId: string; token: string }>('player:join', { code: c, name });
+      const r = await rpc<{ playerId: string; token: string }>('player:join', { code: c, name });
       store.set(keys.player(c), { playerId: r.playerId, token: r.token });
       go(`/play/${c}`);
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
@@ -28,7 +28,7 @@ export default function Landing({ code: initialCode = '' }: { code?: string }) {
   const host = async () => {
     setErr(''); setBusy(true);
     try {
-      const r = await call<{ code: string; hostToken: string }>('host:create', {});
+      const r = await rpc<{ code: string; hostToken: string }>('host:create', {});
       store.set(keys.host(r.code), r.hostToken);
       go(`/host/${r.code}`);
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }

@@ -5,13 +5,13 @@ import Landing from './Landing';
 import Player from './Player';
 import Host from './Host';
 import ScreenView from './ScreenView';
-import { call, useAttach, useEvent } from './net';
+import { useRoom } from './net';
+import { useMemo } from 'react';
 import { Brand, ConnBanner } from './ui';
 
 function Screen({ code }: { code: string }) {
-  const pub = useEvent('state:screen');
-  const [err, setErr] = useState('');
-  useAttach(() => { call('screen:attach', { code }).catch((e) => setErr(e.message)); }, [code]);
+  const auth = useMemo(() => ({ code, role: 'screen' as const }), [code]);
+  const { view: pub, error: err } = useRoom(auth);
   useEffect(() => {
     // Keep the projector awake when supported.
     (navigator as any).wakeLock?.request?.('screen').catch(() => {});

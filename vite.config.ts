@@ -6,6 +6,6 @@ export default defineConfig({
   root: 'src/client',
   publicDir: '../../public',
   build: { outDir: '../../dist/client', emptyOutDir: true },
-  server: { port: 5173, host: true, proxy: { '/socket.io': { target: 'http://localhost:3000', ws: true }, '/healthz': 'http://localhost:3000' } },
+  server: { port: 5173, host: true, proxy: { '/api': 'http://localhost:3000' } },
   test: { root: '.', include: ['tests/**/*.test.ts'], testTimeout: 30000 },
 } as any);

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { call, go, keys, store, useAttach, useEvent } from './net';
+import { go, keys, store, useRoom } from './net';
+import { useMemo } from 'react';
 import { Brand, ConnBanner, QR, Timer, joinUrl } from './ui';
 import ScreenView from './ScreenView';
 import type { GameSettings, HostView } from '../shared/types';
@@ -11,10 +12,11 @@ const PHASE_LABEL: Record<string, string> = {
 
 export default function Host({ code }: { code: string }) {
   const hostToken = store.get<string>(keys.host(code));
-  const view = useEvent('state:host');
-  const [err, setErr] = useState('');
-  useAttach(() => { call('host:attach', { code, hostToken }).catch((e) => setErr(e.message)); }, [code]);
-  const act = (ev: Parameters<typeof call>[0], a: object = {}) => { setErr(''); call(ev, a).catch((e) => setErr(e.message)); };
+  const auth = useMemo(() => (hostToken ? { code, role: 'host' as const, hostToken } : null), [code, hostToken]);
+  const { view, error, act: run } = useRoom(auth);
+  const [actErr, setErr] = useState('');
+  const err = actErr || error;
+  const act = (ev: string, a: object = {}) => { setErr(''); run(ev, a).catch((e) => setErr(e.message)); };
 
   if (!hostToken || (err && !view)) return (
     <main className="host"><Brand /><div className="card"><p className="mid">אין הרשאת מנחה לחדר הזה מהדפדפן הזה.</p><p className="muted">{err}</p><button className="btn" onClick={() => go('/')}>חזרה למסך הראשי</button></div></main>
@@ -39,7 +41,7 @@ export default function Host({ code }: { code: string }) {
   );
 }
 
-type Act = (ev: Parameters<typeof call>[0], a?: object) => void;
+type Act = (ev: string, a?: object) => void;
 
 function Lobby({ view, act }: { view: HostView; act: Act }) {
   const { pub } = view;

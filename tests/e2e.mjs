@@ -7,7 +7,7 @@ import { mkdirSync } from 'node:fs';
 
 const PORT = 3999, BASE = `http://localhost:${PORT}`, OUT = 'test-results';
 mkdirSync(OUT, { recursive: true });
-const server = spawn(process.execPath, ['--import', 'tsx', 'src/server/index.ts'], { env: { ...process.env, PORT: String(PORT) }, stdio: 'inherit' });
+const server = spawn(process.execPath, ['--import', 'tsx', 'src/server/dev.ts'], { env: { ...process.env, PORT: String(PORT) }, stdio: 'inherit' });
 const errors = [];
 const fail = (m) => { throw new Error(m); };
 const check = async (page, label) => {
@@ -17,7 +17,7 @@ const check = async (page, label) => {
 const shot = (p, n) => p.screenshot({ path: `${OUT}/${n}.png` });
 
 try {
-  for (let i = 0; i < 50; i++) { try { if ((await fetch(`${BASE}/healthz`)).ok) break; } catch {} await new Promise((r) => setTimeout(r, 200)); }
+  for (let i = 0; i < 50; i++) { try { if ((await fetch(`${BASE}/api/healthz`)).ok) break; } catch {} await new Promise((r) => setTimeout(r, 200)); }
   const browser = await chromium.launch();
   const watch = (page, who) => {
     page.on('pageerror', (e) => errors.push(`${who}: ${e.message}`));

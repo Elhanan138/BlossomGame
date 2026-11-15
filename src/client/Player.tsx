@@ -1,24 +1,24 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { call, go, keys, socket, store, useAttach, useEvent } from './net';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { go, imgUrl, keys, store, useRoom } from './net';
 import { Brand, ConnBanner, Drawing, Timer, pts } from './ui';
 import DrawCanvas, { exportImage } from './DrawCanvas';
 import type { PlayerView } from '../shared/types';
 
-export default function Player({ code }: { code: string }) {
-  const creds = store.get<{ playerId: string; token: string }>(keys.player(code));
-  const view = useEvent('state:player');
-  const [fatal, setFatal] = useState('');
+type Act = (action: string, args?: object) => Promise<any>;
+const ActCtx = createContext<Act>(async () => {});
+const useAct = () => useContext(ActCtx);
 
-  useEffect(() => { if (!creds) go(`/j/${code}`); }, []); // eslint-disable-line
-  useAttach(() => {
-    if (!creds) return;
-    call('player:resume', { code, ...creds }).catch((e) => { store.del(keys.player(code)); setFatal(e.message); });
-  }, [code]);
+export default function Player({ code }: { code: string }) {
+  const creds = useMemo(() => store.get<{ playerId: string; token: string }>(keys.player(code)), [code]);
+  const auth = useMemo(() => (creds ? { code, role: 'player' as const, ...creds } : null), [code, creds]);
+  const { view: live, error, act } = useRoom(auth);
+  const [fatal, setFatal] = useState('');
+  useEffect(() => { if (!creds) go(`/j/${code}`); }, [creds, code]);
   useEffect(() => {
-    const k = () => { store.del(keys.player(code)); setFatal('המנחה הסיר אותך מהחדר'); };
-    socket.on('kicked', k);
-    return () => { socket.off('kicked', k); };
-  }, [code]);
+    // Auth failures mean the player was removed or the room is gone; network errors only show the banner.
+    if (/לזהות|לא מצאנו חדר/.test(error)) { store.del(keys.player(code)); setFatal(error.includes('לזהות') ? 'כבר לא נמצאים בחדר הזה (אולי המנחה הסיר אותך).' : error); }
+  }, [error, code]);
+  const view = live;
 
   if (fatal) return (
     <main className="phone"><div className="center"><p className="big">אופס</p><p className="muted">{fatal}</p><button className="btn" onClick={() => go(`/j/${code}`)}>הצטרפות מחדש</button></div></main>
@@ -35,7 +35,7 @@ export default function Player({ code }: { code: string }) {
         <span className="me-chip"><bdi>{me.name}</bdi></span>
       </header>
       <div className="stage" aria-live="polite">
-        <Phase view={view} code={code} />
+        <ActCtx.Provider value={act}><Phase view={view} code={code} /></ActCtx.Provider>
       </div>
       {pub.paused && <div className="paused-overlay" role="status">⏸<br />המשחק בהפסקה קצרה</div>}
     </main>
@@ -118,9 +118,10 @@ function ArtistWait({ pub, text }: { pub: PlayerView['pub']; text: string }) {
 }
 
 function DrawPhase({ view, code }: { view: PlayerView; code: string }) {
+  const call = useAct();
   const { pub, me } = view;
   const dkey = keys.draft(code, pub.round);
-  const latest = useRef<string | null>(me.draft ?? store.get<string>(dkey));
+  const latest = useRef<string | null>(store.get<string>(dkey));
   const [saved, setSaved] = useState(!!latest.current);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -143,7 +144,7 @@ function DrawPhase({ view, code }: { view: PlayerView; code: string }) {
   return (
     <>
       <div className="prompt-card"><small>הביטוי שלך (סודי!)</small><strong dir="auto">{me.prompt}</strong></div>
-      <DrawCanvas initial={latest.current} onChange={onChange} />
+      <DrawCanvas initial={latest.current ?? imgUrl(me.draft)} onChange={onChange} />
       {err && <div className="err" role="alert">{err}</div>}
       <div className="sticky-actions">
         <button className="btn block" onClick={submit} disabled={busy}>סיימתי לצייר</button>
@@ -154,6 +155,7 @@ function DrawPhase({ view, code }: { view: PlayerView; code: string }) {
 }
 
 function AnswerPhase({ view }: { view: PlayerView }) {
+  const call = useAct();
   const { pub } = view;
   const [text, setText] = useState('');
   const [err, setErr] = useState('');
@@ -177,6 +179,7 @@ function AnswerPhase({ view }: { view: PlayerView }) {
 }
 
 function VotePhase({ view }: { view: PlayerView }) {
+  const call = useAct();
   const { pub, me } = view;
   const [sel, setSel] = useState<string | null>(null);
   const [err, setErr] = useState('');

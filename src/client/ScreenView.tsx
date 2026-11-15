@@ -1,5 +1,6 @@
 import type { PublicState } from '../shared/types';
 import { Brand, Drawing, QR, Timer, joinUrl, pts } from './ui';
+import { imgUrl } from './net';
 
 const PHASE_HINT: Record<string, string> = {
   DRAWING: 'כולם מציירים בטלפון את הביטוי הסודי שלהם',
@@ -135,7 +136,7 @@ function Body({ pub, progress }: { pub: PublicState; progress: React.ReactNode }
             </div>
             {h && (h.mostFooling || h.bestLie) && (
               <div className="highlights">
-                {h.mostFooling && <div className="hl"><span>הציור הכי מבלבל ({h.mostFooling.wrong} טעו)</span><img src={h.mostFooling.drawing} alt={h.mostFooling.prompt} /><strong dir="auto">{h.mostFooling.prompt}</strong><span>מאת <bdi>{h.mostFooling.artist}</bdi></span></div>}
+                {h.mostFooling && <div className="hl"><span>הציור הכי מבלבל ({h.mostFooling.wrong} טעו)</span><img src={imgUrl(h.mostFooling.drawing)!} alt={h.mostFooling.prompt} /><strong dir="auto">{h.mostFooling.prompt}</strong><span>מאת <bdi>{h.mostFooling.artist}</bdi></span></div>}
                 {h.bestLie && <div className="hl"><span>התשובה הכי מטעה ({h.bestLie.fooled} נפלו)</span><strong dir="auto">"{h.bestLie.text}"</strong><span>מאת <bdi>{h.bestLie.authors.join(', ')}</bdi></span></div>}
               </div>
             )}

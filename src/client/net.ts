@@ -1,47 +1,71 @@
-import { io, type Socket } from 'socket.io-client';
-import { useEffect, useState } from 'react';
-import type { ClientToServer, ServerToClient } from '../shared/types';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { HostView, PlayerView, PublicState } from '../shared/types';
 
-export const socket: Socket<ServerToClient, ClientToServer> = io({ transports: ['websocket', 'polling'], reconnectionDelayMax: 3000 });
+// HTTP transport for serverless hosting (Vercel). Clients poll ~1/s; the server
+// applies timers on every request, so state stays consistent across devices.
 
-/** Emit with ack; resolves on ok, rejects with the server's Hebrew error message. */
-export function call<T = {}>(ev: keyof ClientToServer, args: object = {}): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('אין תגובה מהשרת. בודקים חיבור…')), 10000);
-    (socket.emit as any)(ev, args, (r: any) => {
-      clearTimeout(t);
-      r?.ok ? resolve(r) : reject(new Error(r?.error ?? 'שגיאה לא צפויה'));
-    });
-  });
+export type Auth = { code: string; role: 'host' | 'player' | 'screen'; hostToken?: string; playerId?: string; token?: string };
+type ViewOf<R extends Auth['role']> = R extends 'host' ? HostView : R extends 'player' ? PlayerView : PublicState;
+
+let online = true;
+const listeners = new Set<(v: boolean) => void>();
+const setOnline = (v: boolean) => { if (v !== online) { online = v; listeners.forEach((l) => l(v)); } };
+
+/** POST an action; resolves on ok, rejects with the server's Hebrew error message. */
+export async function rpc<T = any>(action: string, args: object = {}, auth?: Auth): Promise<T> {
+  let res: Response;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 10000);
+    res = await fetch('/api/rpc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, args, auth }), signal: ctrl.signal });
+    clearTimeout(t);
+  } catch {
+    setOnline(false);
+    throw new Error('אין חיבור לשרת. בודקים שוב…');
+  }
+  setOnline(true);
+  const r = await res.json().catch(() => ({ ok: false, error: 'תגובה לא תקינה מהשרת' }));
+  if (!r.ok) throw new Error(r.error);
+  if (r.view) { const pub = r.view.pub ?? r.view; if (pub?.serverNow) clock.sync(pub.serverNow); }
+  return r;
 }
 
-/** Run `attach` now and after every reconnect (server forgets socket membership). */
-export function useAttach(attach: () => void, deps: unknown[]) {
+/** Poll the room view for a role; `act` runs an action and applies the returned view immediately. */
+export function useRoom<R extends Auth['role']>(auth: Auth & { role: R } | null, interval = 1000) {
+  const [view, setView] = useState<ViewOf<R> | null>(null);
+  const [error, setError] = useState('');
+  const authRef = useRef(auth);
+  authRef.current = auth;
+  const gen = useRef(0); // bumps on every action so stale in-flight polls are dropped
+
   useEffect(() => {
-    if (socket.connected) attach();
-    socket.on('connect', attach);
-    return () => { socket.off('connect', attach); };
+    if (!auth) return;
+    let alive = true, timer = 0;
+    const tick = async () => {
+      const g = gen.current;
+      try { const r = await rpc('state', {}, authRef.current!); if (alive && g === gen.current) { setView(r.view); setError(''); } }
+      catch (e) { if (alive) setError((e as Error).message); }
+      if (alive) timer = window.setTimeout(tick, document.hidden ? interval * 3 : interval);
+    };
+    tick();
+    const wake = () => { if (!document.hidden) { clearTimeout(timer); tick(); } };
+    document.addEventListener('visibilitychange', wake);
+    return () => { alive = false; clearTimeout(timer); document.removeEventListener('visibilitychange', wake); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-}
+  }, [auth?.code, auth?.role, auth?.playerId]);
 
-export function useConnected() {
-  const [c, setC] = useState(socket.connected);
-  useEffect(() => {
-    const on = () => setC(true), off = () => setC(false);
-    socket.on('connect', on); socket.on('disconnect', off);
-    return () => { socket.off('connect', on); socket.off('disconnect', off); };
+  const act = useCallback(async <T = any>(action: string, args: object = {}) => {
+    const r = await rpc<T & { view: ViewOf<R> }>(action, args, authRef.current!);
+    gen.current++;
+    setView(r.view);
+    return r;
   }, []);
-  return c;
+  return { view, error, act };
 }
 
-export function useEvent<K extends keyof ServerToClient>(ev: K): Parameters<ServerToClient[K]>[0] | null {
-  const [v, setV] = useState<any>(null);
-  useEffect(() => {
-    const h = (x: any) => { if (x && typeof x === 'object' && 'serverNow' in (x.pub ?? x)) clock.sync((x.pub ?? x).serverNow); setV(x); };
-    socket.on(ev, h as any);
-    return () => { socket.off(ev, h as any); };
-  }, [ev]);
+export function useOnline() {
+  const [v, setV] = useState(online);
+  useEffect(() => { listeners.add(setV); return () => { listeners.delete(setV); }; }, []);
   return v;
 }
 
@@ -51,6 +75,8 @@ export const clock = {
   sync(serverNow: number) { this.offset = serverNow - Date.now(); },
   now() { return Date.now() + this.offset; },
 };
+
+export const imgUrl = (ref: string | null | undefined) => (ref ? `/api/img?id=${encodeURIComponent(ref)}` : null);
 
 export const store = {
   get<T>(k: string): T | null { try { return JSON.parse(localStorage.getItem(k) ?? 'null'); } catch { return null; } },

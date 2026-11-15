@@ -66,7 +66,7 @@ export default function DrawCanvas({ initial, onChange }: { initial: string | nu
   useEffect(() => {
     const c = ctx();
     c.fillStyle = '#fff'; c.fillRect(0, 0, SIZE, SIZE);
-    if (initial) { const im = new Image(); im.onload = () => c.drawImage(im, 0, 0, SIZE, SIZE); im.src = initial; }
+    if (initial) { const im = new Image(); im.onload = () => { c.drawImage(im, 0, 0, SIZE, SIZE); onChange(exportImage(ref.current!)); }; im.src = initial; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

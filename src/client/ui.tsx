@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { clock, useConnected } from './net';
+import { clock, imgUrl, useOnline } from './net';
 import type { PublicState } from '../shared/types';
 
 export const Brand = ({ name = 'Blossom' }: { name?: string }) => (
@@ -35,7 +35,7 @@ export function QR({ text, className = 'qr' }: { text: string; className?: strin
 }
 
 export function ConnBanner() {
-  const ok = useConnected();
+  const ok = useOnline();
   const [show, setShow] = useState(false);
   useEffect(() => { if (ok) { setShow(false); return; } const t = setTimeout(() => setShow(true), 1500); return () => clearTimeout(t); }, [ok]);
   return show ? <div className="conn-banner" role="status">החיבור נפל, מתחברים מחדש…</div> : null;
@@ -43,7 +43,7 @@ export function ConnBanner() {
 
 export function Drawing({ src, small }: { src: string | null; small?: boolean }) {
   return src
-    ? <img className={`drawing-img${small ? ' small' : ''}`} src={src} alt="הציור שעל הפרק" />
+    ? <img className={`drawing-img${small ? ' small' : ''}`} src={imgUrl(src)!} alt="הציור שעל הפרק" />
     : <div className="blank-drawing">הקנבס נשאר ריק. אמנות מינימליסטית במיטבה 🖼️</div>;
 }
 

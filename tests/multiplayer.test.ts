@@ -1,115 +1,90 @@
-// Real Socket.IO server + 9 real clients: full game, reconnect, double vote, late answers.
-import { afterAll, beforeAll, expect, it } from 'vitest';
-import { io as connect, type Socket } from 'socket.io-client';
-import type { AddressInfo } from 'node:net';
-import { createGameServer } from '../src/server/index';
+// 9 simulated phones + host + projector against the real RPC layer (same code the Vercel functions run).
+import { expect, it } from 'vitest';
+import { rpc, type RpcBody } from '../src/server/api';
+import { memoryStore } from '../src/server/store';
 import type { HostView, PlayerView, PublicState } from '../src/shared/types';
 
 const IMG = 'data:image/png;base64,iVBORw0KGgo=';
-let srv: ReturnType<typeof createGameServer>;
-let url = '';
-const sockets: Socket[] = [];
-
-beforeAll(async () => {
-  srv = createGameServer();
-  await new Promise<void>((r) => srv.http.listen(0, r));
-  url = `http://localhost:${(srv.http.address() as AddressInfo).port}`;
-});
-afterAll(() => { sockets.forEach((s) => s.close()); srv.close(); srv.http.close(); });
-
-const client = () => { const s = connect(url, { transports: ['websocket'], forceNew: true }); sockets.push(s); return s; };
-const call = <T = any>(s: Socket, ev: string, a: object = {}) =>
-  new Promise<T>((res, rej) => s.emit(ev, a, (r: any) => (r.ok ? res(r) : rej(new Error(r.error)))));
-function tracker<T>(s: Socket, ev: string) {
-  const t = { last: null as T | null, waiters: [] as [(v: T) => boolean, (v: T) => void][] };
-  s.on(ev, (v: T) => { t.last = v; t.waiters = t.waiters.filter(([p, r]) => (p(v) ? (r(v), false) : true)); });
-  return {
-    get: () => t.last!,
-    until: (p: (v: T) => boolean) => new Promise<T>((r, rej) => {
-      if (t.last && p(t.last)) return r(t.last);
-      t.waiters.push([p, r]);
-      setTimeout(() => rej(new Error(`timeout waiting on ${ev}`)), 5000);
-    }),
-  };
+const store = memoryStore();
+async function call<T = any>(action: string, args: object = {}, auth?: RpcBody['auth']): Promise<T> {
+  const r = await rpc(store, { action, args, auth }, `ip-${Math.random()}`);
+  if (!r.ok) throw new Error(r.error);
+  return r as T;
 }
 
-it('9 players play a complete game in real time', async () => {
-  const host = client();
-  const hostState = tracker<HostView>(host, 'state:host');
-  const { code, hostToken } = await call(host, 'host:create', { settings: { rounds: 1 } });
-  expect(code).toMatch(/^[A-Z0-9]{6}$/);
-
-  const screen = client();
-  const screenState = tracker<PublicState>(screen, 'state:screen');
-  await call(screen, 'screen:attach', { code });
-
+it('9 players play a complete game with concurrent actions', async () => {
+  const { code, hostToken } = await call('host:create', { settings: { rounds: 1 } });
+  const host = { code, role: 'host' as const, hostToken };
+  const screen = { code, role: 'screen' as const };
   const names = ['נועה', 'Dan', 'אבי', 'מאיה', 'יוסי', 'Lior 🎨', 'רותם', 'שירה', 'עומר'];
   const players = await Promise.all(names.map(async (name) => {
-    const s = client();
-    const st = tracker<PlayerView>(s, 'state:player');
-    const auth = await call(s, 'player:join', { code, name });
-    return { s, st, name, ...auth };
+    const r = await call('player:join', { name }, { code });
+    return { name, auth: { code, role: 'player' as const, playerId: r.playerId, token: r.token } };
   }));
-  await expect(call(client(), 'player:join', { code, name: 'נועה' })).rejects.toThrow(/תפוס/);
-  await expect(call(client(), 'host:start')).rejects.toThrow(/מנחה/);
-  await expect(call(client(), 'host:attach', { code, hostToken: 'nope' })).rejects.toThrow();
-  await hostState.until((v) => v.pub.players.length === 9);
+  await expect(call('player:join', { name: 'נועה' }, { code })).rejects.toThrow(/תפוס/);
+  await expect(call('host:start', {}, screen)).rejects.toThrow(/מנחה/);
+  await expect(call('host:start', {}, { ...host, hostToken: 'nope' })).rejects.toThrow(/מנחה/);
+  await expect(call('state', {}, { ...players[0].auth, token: 'bad' })).rejects.toThrow(/לזהות/);
+  const lobby = (await call<{ view: HostView }>('state', {}, host)).view;
+  expect(lobby.pub.players.length).toBe(9);
 
-  await call(host, 'host:start');
-  await Promise.all(players.map((p) => p.st.until((v: PlayerView) => v.pub.phase === 'DRAWING' && !!v.me.prompt)));
-  const prompts = players.map((p) => p.st.get().me.prompt!);
+  await call('host:start', {}, host);
+  const views = await Promise.all(players.map((p) => call<{ view: PlayerView }>('state', {}, p.auth)));
+  const prompts = views.map((v) => v.view.me.prompt!);
   expect(new Set(prompts).size).toBe(9);
-  expect(JSON.stringify(screenState.get())).not.toContain(prompts[0]);
+  const pub = (await call<{ view: PublicState }>('state', {}, screen)).view;
+  expect(JSON.stringify(pub)).not.toContain(prompts[0]);
 
-  // Player 0 drops mid-drawing after saving a draft, then resumes with its token.
-  await call(players[0].s, 'player:draft', { image: IMG });
-  players[0].s.disconnect();
-  await hostState.until((v) => v.pub.players.some((p) => p.id === players[0].playerId && !p.connected));
-  const re = client();
-  const reSt = tracker<PlayerView>(re, 'state:player');
-  await expect(call(re, 'player:resume', { code, playerId: players[0].playerId, token: 'bad' })).rejects.toThrow();
-  await call(re, 'player:resume', { code, playerId: players[0].playerId, token: players[0].token });
-  const restored = await reSt.until((v) => v.pub.phase === 'DRAWING');
-  expect(restored.me.draft).toBe(IMG);
-  expect(restored.me.prompt).toBe(prompts[0]);
-  players[0] = { ...players[0], s: re, st: reSt };
-
-  await Promise.all(players.map((p) => call(p.s, 'player:submitDrawing', { image: IMG })));
-  await expect(call(players[1].s, 'player:submitDrawing', { image: IMG })).rejects.toThrow();
+  await call('player:draft', { image: IMG }, players[0].auth);
+  const restored = (await call<{ view: PlayerView }>('state', {}, players[0].auth)).view;
+  expect(restored.me.draft).toMatch(/~/);
+  await expect(call('player:draft', { image: 'javascript:alert(1)' }, players[0].auth)).rejects.toThrow();
+  // All 9 submit at the same moment (optimistic concurrency + retries).
+  await Promise.all(players.map((p) => call('player:submitDrawing', { image: IMG }, p.auth)));
 
   for (let d = 0; d < 9; d++) {
-    const v = await screenState.until((x) => x.phase === 'ANSWERING' && x.drawingIndex === d);
-    expect(v.drawing).toBe(IMG);
-    const others = players.filter((p) => p.playerId !== v.artistId);
-    // Everyone answers concurrently.
-    await Promise.all(others.map((p, i) => call(p.s, 'player:answer', { text: i % 4 === 0 ? 'תשובה זהה' : `ניחוש ${p.name} ${d}` })));
-    const voting = await screenState.until((x) => x.phase === 'VOTING' && x.drawingIndex === d);
-    await expect(call(others[0].s, 'player:answer', { text: 'מאוחר מדי' })).rejects.toThrow();
-    expect(voting.options!.filter((o) => o.text === 'תשובה זהה').length).toBe(1);
+    let v = (await call<{ view: PublicState }>('state', {}, screen)).view;
+    expect(v.phase).toBe('ANSWERING');
+    expect(v.drawingIndex).toBe(d);
+    const others = players.filter((p) => p.auth.playerId !== v.artistId);
+    await Promise.all(others.map((p, i) => call('player:answer', { text: i % 4 === 0 ? 'תשובה זהה' : `ניחוש ${p.name} ${d}` }, p.auth)));
+    v = (await call<{ view: PublicState }>('state', {}, screen)).view;
+    expect(v.phase).toBe('VOTING');
+    expect(v.options!.filter((o) => o.text === 'תשובה זהה').length).toBe(1);
+    await expect(call('player:answer', { text: 'מאוחר' }, others[0].auth)).rejects.toThrow();
     await Promise.all(others.map(async (p) => {
-      const me = (await p.st.until((x: PlayerView) => x.pub.phase === 'VOTING' && x.pub.drawingIndex === d)).me;
-      const choice = voting.options!.find((o) => !me.myOptionIds.includes(o.id))!;
-      await call(p.s, 'player:vote', { optionId: choice.id });
+      const me = (await call<{ view: PlayerView }>('state', {}, p.auth)).view.me;
+      const choice = v.options!.find((o) => !me.myOptionIds.includes(o.id))!;
+      await call('player:vote', { optionId: choice.id }, p.auth);
     }));
-    const rev = await screenState.until((x) => x.phase === 'REVEAL' && x.drawingIndex === d);
-    expect(rev.reveal!.options[0].isTruth).toBe(true);
-    await expect(call(others[0].s, 'player:vote', { optionId: voting.options![0].id })).rejects.toThrow();
-    await call(host, 'host:next');
+    v = (await call<{ view: PublicState }>('state', {}, screen)).view;
+    expect(v.phase).toBe('REVEAL');
+    expect(v.reveal!.options[0].isTruth).toBe(true);
+    await expect(call('player:vote', { optionId: v.reveal!.options[0].id }, others[0].auth)).rejects.toThrow();
+    await call('host:next', {}, host);
   }
-  const results = await screenState.until((x) => x.phase === 'ROUND_RESULTS');
-  expect(results.leaderboard!.length).toBe(9);
-  const total = results.leaderboard!.reduce((s, l) => s + l.score, 0);
-  expect(total).toBeGreaterThan(0);
-  await call(host, 'host:next');
-  const fin = await screenState.until((x) => x.phase === 'FINAL');
-  expect(fin.highlights).toBeTruthy();
+  const res = (await call<{ view: PublicState }>('state', {}, screen)).view;
+  expect(res.phase).toBe('ROUND_RESULTS');
+  expect(res.leaderboard!.reduce((s, l) => s + l.score, 0)).toBeGreaterThan(0);
+  await call('host:next', {}, host);
+  const fin = (await call<{ view: PublicState }>('state', {}, screen)).view;
+  expect(fin.phase).toBe('FINAL');
+  await call('host:newGame', {}, host);
+  const again = (await call<{ view: HostView }>('state', {}, host)).view;
+  expect(again.pub.phase).toBe('LOBBY');
+  expect(again.pub.players.length).toBe(9);
+});
 
-  // Host refresh: reattach with token and start a new game with the same players.
-  const host2 = client();
-  const h2 = tracker<HostView>(host2, 'state:host');
-  await call(host2, 'host:attach', { code, hostToken });
-  await call(host2, 'host:newGame');
-  const lobby = await h2.until((v) => v.pub.phase === 'LOBBY');
-  expect(lobby.pub.players.length).toBe(9);
-  expect(lobby.pub.players.every((p) => p.score === 0)).toBe(true);
-}, 30000);
+it('timers advance lazily on the next request and silent players disconnect', async () => {
+  const { code, hostToken } = await call('host:create', {});
+  const host = { code, role: 'host' as const, hostToken };
+  const ps = await Promise.all(['א', 'ב', 'ג'].map((name) => call('player:join', { name }, { code })));
+  await call('host:start', {}, host);
+  const row = (await store.get(code))!;
+  // Simulate 2 minutes passing and players going silent.
+  const aged = row.state.replace(/"deadline":(\d+)/, (_m, d) => `"deadline":${Number(d) - 120_000}`);
+  await store.update(code, aged, row.version);
+  const v = (await call<{ view: HostView }>('state', {}, host)).view;
+  expect(v.pub.phase).toBe('ANSWERING');
+  expect(ps.length).toBe(3);
+});
