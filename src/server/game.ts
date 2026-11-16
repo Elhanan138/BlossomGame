@@ -3,7 +3,7 @@ import { PROMPTS, TEAM_QUESTIONS } from './prompts';
 import {
   DEFAULT_SETTINGS, LIMITS,
   type FinalHighlights, type GamePhase, type GameSettings, type HostView, type PlayerPrivate,
-  type PublicState, type RevealOption, type ScoreLine,
+  type PublicState, type RecapSlide, type RevealOption, type ScoreLine,
 } from '../shared/types';
 
 const validRef = (r: unknown) => (typeof r === 'string' && r.length > 0 && r.length < 400 ? r : fail('הציור לא תקין'));
@@ -16,10 +16,9 @@ export function shuffle<T>(arr: T[]): T[] {
   for (let i = a.length - 1; i > 0; i--) { const j = randomInt(i + 1); [a[i], a[j]] = [a[j], a[i]]; }
   return a;
 }
-/** Normalize text for duplicate detection: case, spaces, punctuation, niqqud. */
-export function normalize(s: string): string {
-  return s.toLowerCase().replace(/[֑-ׇ]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-}
+import { normalize } from './normalize';
+import { buildRecap, slideSeconds, type HistoryEntry } from './recap';
+export { normalize };
 const clamp = (v: unknown, lo: number, hi: number, d: number) => {
   const n = Math.round(Number(v));
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d;
@@ -87,8 +86,9 @@ export class Room {
   private usedQuestions = new Set<string>();
   private roundStartScores = new Map<string, number>();
   private prevRanks = new Map<string, number>();
-  private history: { image: string; prompt: string; artist: string; wrong: number }[] = [];
-  private lies: { text: string; authors: string[]; fooled: number }[] = [];
+  history: HistoryEntry[] = [];
+  recapSlides: RecapSlide[] = [];
+  recapIndex = 0;
   private timer: unknown = null;
 
   constructor(public code: string, settings?: Partial<GameSettings>, public onChange: () => void = () => {}, public clock: Clock = realClock) {
@@ -212,7 +212,7 @@ export class Room {
     if (this.connected().length < LIMITS.minPlayers) fail(`צריך לפחות ${LIMITS.minPlayers} משתתפים מחוברים`);
     for (const p of this.players.values()) p.score = 0;
     this.round = 0;
-    this.history = []; this.lies = []; this.prevRanks.clear();
+    this.history = []; this.recapSlides = []; this.prevRanks.clear();
     this.startRound();
   }
   private pickPrompts(n: number): string[] {
@@ -283,6 +283,7 @@ export class Room {
       case 'REVEAL': return this.nextDrawing();
       case 'ROUND_RESULTS': return this.afterResults();
       case 'DISCUSSION': return this.afterDiscussion();
+      case 'RECAP': return this.recapIndex + 1 < this.recapSlides.length ? this.showSlide(this.recapIndex + 1) : this.final();
       case 'FINAL': return;
     }
   }
@@ -346,8 +347,12 @@ export class Room {
     // Truth first, then most-voted lies.
     options.sort((a, b) => Number(b.isTruth) - Number(a.isTruth) || b.voters.length - a.voters.length);
     this.reveal = { prompt: d.prompt, options, gains };
-    if (d.image) this.history.push({ image: d.image, prompt: d.prompt, artist: name(d.artistId), wrong });
-    for (const o of options) if (!o.isTruth && !o.house && o.voters.length) this.lies.push({ text: o.text, authors: o.authors, fooled: o.voters.length });
+    this.history.push({
+      round: this.round, image: d.image, prompt: d.prompt, artist: name(d.artistId),
+      answers: options.filter((o) => !o.isTruth && !o.house).map((o) => ({ text: o.text, authors: o.authors, voters: o.voters })),
+      correct: options.find((o) => o.isTruth)?.voters ?? [],
+      missed: this.expectedIds().filter((id) => !this.votes.has(id)).map(name),
+    });
     this.phase = 'REVEAL';
     this.setTimer(this.autoSeconds(this.settings.revealSeconds));
     this.changed();
@@ -393,14 +398,33 @@ export class Room {
     if (this.round < this.settings.rounds) this.startRound();
     else this.finish();
   }
+  /** End of game: comedy recap of everyone's interpretations first (if any), then the podium. */
   finish() {
     if (this.phase === 'LOBBY') fail('המשחק עוד לא התחיל');
+    if (this.phase === 'RECAP' || this.phase === 'FINAL') return this.final();
+    this.recapSlides = buildRecap(this.history);
+    if (!this.recapSlides.length) return this.final();
+    this.reveal = null; this.question = null; this.options = [];
+    this.phase = 'RECAP';
+    this.showSlide(0);
+  }
+  private showSlide(i: number) {
+    this.recapIndex = Math.max(0, Math.min(i, this.recapSlides.length - 1));
+    this.setTimer(slideSeconds(this.recapSlides[this.recapIndex]));
+    this.changed();
+  }
+  prevSlide() {
+    if (this.phase !== 'RECAP') fail('אין כרגע סיכום להציג');
+    this.showSlide(this.recapIndex - 1);
+  }
+  private final() {
     this.leaderboard = this.ranking().map((l) => ({ ...l, gained: 0 }));
-    const most = [...this.history].sort((a, b) => b.wrong - a.wrong)[0];
-    const lie = [...this.lies].sort((a, b) => b.fooled - a.fooled)[0];
+    const wrongOf = (h: HistoryEntry) => h.answers.reduce((n, a) => n + a.voters.length, 0);
+    const most = this.history.filter((h) => h.image).sort((a, b) => wrongOf(b) - wrongOf(a))[0];
+    const lie = this.history.flatMap((h) => h.answers).sort((a, b) => b.voters.length - a.voters.length)[0];
     this.highlights = {
-      mostFooling: most && most.wrong > 0 ? { drawing: most.image, prompt: most.prompt, artist: most.artist, wrong: most.wrong } : null,
-      bestLie: lie ?? null,
+      mostFooling: most && wrongOf(most) > 0 ? { drawing: most.image!, prompt: most.prompt, artist: most.artist, wrong: wrongOf(most) } : null,
+      bestLie: lie && lie.voters.length ? { text: lie.text, authors: lie.authors, fooled: lie.voters.length } : null,
     };
     this.phase = 'FINAL';
     this.reveal = null; this.question = null; this.options = [];
@@ -458,6 +482,7 @@ export class Room {
       leaderboard: ['ROUND_RESULTS', 'FINAL'].includes(this.phase) ? this.leaderboard : null,
       question: this.phase === 'DISCUSSION' ? this.question : null,
       highlights: this.phase === 'FINAL' ? this.highlights : null,
+      recap: this.phase === 'RECAP' && this.recapSlides.length ? { index: this.recapIndex, total: this.recapSlides.length, slide: this.recapSlides[this.recapIndex] } : null,
       expected: exp.length,
       submitted: exp.filter((id) => done.has(id)).length,
     };

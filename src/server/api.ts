@@ -86,6 +86,7 @@ export async function rpc(store: Store, body: RpcBody, ip = 'local'): Promise<Rp
         case 'host:addTime': room.addTime(Number(args.seconds)); break;
         case 'host:kick': room.kick(String(args.playerId)); delete room.seen[String(args.playerId)]; break;
         case 'host:end': room.finish(); break;
+        case 'host:prev': room.prevSlide(); break;
         case 'host:newGame': room.newGame(); break;
         case 'player:join': {
           const p = room.addPlayer(args.name);

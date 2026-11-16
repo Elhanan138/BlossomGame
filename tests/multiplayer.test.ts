@@ -67,8 +67,24 @@ it('9 players play a complete game with concurrent actions', async () => {
   expect(res.phase).toBe('ROUND_RESULTS');
   expect(res.leaderboard!.reduce((s, l) => s + l.score, 0)).toBeGreaterThan(0);
   await call('host:next', {}, host);
-  const fin = (await call<{ view: PublicState }>('state', {}, screen)).view;
-  expect(fin.phase).toBe('FINAL');
+  // Comedy recap built from everyone's interpretations.
+  let rc = (await call<{ view: PublicState }>('state', {}, screen)).view;
+  expect(rc.phase).toBe('RECAP');
+  expect(rc.recap!.slide.kind).toBe('intro');
+  const seen: string[] = [];
+  for (let i = 0; i < rc.recap!.total; i++) {
+    const v = (await call<{ view: PublicState }>('state', {}, screen)).view;
+    seen.push(JSON.stringify(v.recap!.slide));
+    if (i === 1) { await call('host:prev', {}, host); expect((await call<{ view: PublicState }>('state', {}, screen)).view.recap!.index).toBe(0); await call('host:next', {}, host); }
+    await call('host:next', {}, host);
+  }
+  const all = seen.join('\n');
+  expect(all).toContain('ניחוש');
+  expect(all).toContain('גדולים חושבים אותו דבר');
+  expect(all).toContain('השקרן');
+  rc = (await call<{ view: PublicState }>('state', {}, screen)).view;
+  expect(rc.phase).toBe('FINAL');
+  const fin = rc;
   await call('host:newGame', {}, host);
   const again = (await call<{ view: HostView }>('state', {}, host)).view;
   expect(again.pub.phase).toBe('LOBBY');

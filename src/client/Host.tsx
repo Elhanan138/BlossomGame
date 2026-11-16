@@ -7,7 +7,7 @@ import type { GameSettings, HostView } from '../shared/types';
 
 const PHASE_LABEL: Record<string, string> = {
   LOBBY: 'לובי', DRAWING: 'ציור', ANSWERING: 'המצאת תשובות', VOTING: 'הצבעה', REVEAL: 'חשיפה',
-  ROUND_RESULTS: 'תוצאות סבב', DISCUSSION: 'שאלת שיחה', FINAL: 'סיום',
+  ROUND_RESULTS: 'תוצאות סבב', DISCUSSION: 'שאלת שיחה', RECAP: 'סיכום מצחיק', FINAL: 'סיום',
 };
 
 export default function Host({ code }: { code: string }) {
@@ -133,6 +133,7 @@ function InGame({ view, act }: { view: HostView; act: Act }) {
           <h2 style={{ margin: 0 }}>{PHASE_LABEL[pub.phase]}{pub.round ? ` · סבב ${pub.round}/${pub.settings.rounds}` : ''}</h2>
           <Timer pub={pub} />
         </div>
+        {pub.recap && <p className="muted" style={{ margin: 0 }}>שקף {pub.recap.index + 1} מתוך {pub.recap.total}</p>}
         {inDrawing && <p className="muted" style={{ margin: 0 }}>ציור {pub.drawingIndex + 1} מתוך {pub.drawingCount} · של <bdi>{pub.artistName}</bdi></p>}
         {pub.expected > 0 && (
           <>
@@ -150,7 +151,9 @@ function InGame({ view, act }: { view: HostView; act: Act }) {
             <button className="btn ghost sm" onClick={() => act('host:next')}>⏭ לשלב הבא</button>
             {(pub.deadline || pub.remainingMs) && <button className="btn ghost sm" onClick={() => act('host:addTime', { seconds: 15 })}>+15 שנ׳</button>}
             {inDrawing && <button className="btn ghost sm" onClick={() => act('host:skipDrawing')}>דילוג על הציור</button>}
-            {confirmEnd
+            {pub.phase === 'RECAP' && <button className="btn ghost sm" onClick={() => act('host:prev')}>⏮ שקף קודם</button>}
+            {pub.phase === 'RECAP' && <button className="btn warm sm" onClick={() => act('host:end')}>לפודיום 🏆</button>}
+            {pub.phase === 'RECAP' ? null : confirmEnd
               ? <span className="confirm">לסיים עכשיו?<button className="btn danger sm" onClick={() => { setConfirmEnd(false); act('host:end'); }}>כן, לסיים</button><button className="btn ghost sm" onClick={() => setConfirmEnd(false)}>ביטול</button></span>
               : <button className="btn danger sm" onClick={() => setConfirmEnd(true)}>סיום משחק</button>}
           </div>

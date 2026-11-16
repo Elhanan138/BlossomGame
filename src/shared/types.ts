@@ -9,6 +9,7 @@ export type GamePhase =
   | 'REVEAL'
   | 'ROUND_RESULTS'
   | 'DISCUSSION'
+  | 'RECAP'
   | 'FINAL';
 
 export type GameMode = 'regular' | 'team';
@@ -82,6 +83,11 @@ export interface ScoreLine {
   prevRank: number | null;
 }
 
+export type RecapSlide =
+  | { kind: 'intro'; title: string; text: string; stat: string }
+  | { kind: 'drawing'; step: number; steps: number; image: string | null; artist: string; prompt: string; lines: { text: string; fooled: string | null; voters: string[] }[]; caption: string }
+  | { kind: 'award'; emoji: string; title: string; winners: string; line: string; quote?: string };
+
 export interface FinalHighlights {
   mostFooling: { drawing: string; prompt: string; artist: string; wrong: number } | null;
   bestLie: { text: string; authors: string[]; fooled: number } | null;
@@ -108,6 +114,7 @@ export interface PublicState {
   leaderboard: ScoreLine[] | null; // ROUND_RESULTS / FINAL
   question: string | null; // DISCUSSION
   highlights: FinalHighlights | null; // FINAL
+  recap: { index: number; total: number; slide: RecapSlide } | null; // RECAP
   expected: number; // how many submissions this phase expects
   submitted: number;
 }
