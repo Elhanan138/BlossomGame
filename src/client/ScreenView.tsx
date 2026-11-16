@@ -12,11 +12,13 @@ const PHASE_HINT: Record<string, string> = {
 export default function ScreenView({ pub }: { pub: PublicState }) {
   const progress = pub.drawingCount ? <span>ציור {pub.drawingIndex + 1} מתוך {pub.drawingCount} · סבב {pub.round}/{pub.settings.rounds}</span> : null;
   const timed = ['DRAWING', 'ANSWERING', 'VOTING', 'REVEAL', 'ROUND_RESULTS', 'DISCUSSION'].includes(pub.phase);
+  const dots = pub.recap ? <div className="recap-dots" aria-hidden="true">{Array.from({ length: pub.recap.total }, (_, i) => <i key={i} className={i <= pub.recap!.index ? 'on' : ''} />)}</div> : null;
   return (
     <div className="screen">
       <header className="screen-head">
         <Brand />
         {pub.paused && <span className="paused-badge">⏸ הפסקה</span>}
+        {dots}
         {timed && <Timer pub={pub} />}
       </header>
       <Body pub={pub} progress={progress} />
@@ -121,6 +123,8 @@ function Body({ pub, progress }: { pub: PublicState; progress: React.ReactNode }
           <p className="screen-sub" style={{ textAlign: 'center' }}>{funny(pub)}</p>
         </>
       );
+    case 'RECAP':
+      return <Recap pub={pub} />;
     case 'DISCUSSION':
       return <><p className="screen-sub" style={{ textAlign: 'center' }}>רגע של שיחה 💬 אין חובה לשתף</p><p className="question">{pub.question}</p></>;
     case 'FINAL': {
@@ -146,6 +150,49 @@ function Body({ pub, progress }: { pub: PublicState; progress: React.ReactNode }
       );
     }
   }
+}
+
+function Recap({ pub }: { pub: PublicState }) {
+  const { slide, index } = pub.recap!;
+  if (slide.kind === 'intro') return (
+    <div key={index} className="recap-intro">
+      <h1 className="recap-big">{slide.title}</h1>
+      <p className="screen-sub">{slide.text}</p>
+      <p className="recap-stat">{slide.stat}</p>
+    </div>
+  );
+  if (slide.kind === 'award') return (
+    <div key={index} className="recap-award">
+      <span className="recap-emoji" aria-hidden="true">{slide.emoji}</span>
+      <p className="screen-sub">הפרס הוא…</p>
+      <h1 className="recap-big">{slide.title}</h1>
+      <p className="recap-winner" dir="rtl">{slide.winners}</p>
+      <p className="screen-sub">{slide.line}</p>
+      {slide.quote && <p className="recap-quote" dir="auto">{slide.quote}</p>}
+    </div>
+  );
+  return (
+    <div key={index} className="recap-story">
+      <div className="recap-art">
+        <Drawing src={slide.image} />
+        <p className="screen-sub">ציור {slide.step} מתוך {slide.steps} · מאת <bdi>{slide.artist}</bdi></p>
+      </div>
+      <div className="recap-lines">
+        <p className="screen-sub">מה שבאמת היה צריך להיות פה:</p>
+        <p className="recap-truth" dir="auto">{slide.prompt}</p>
+        <p className="screen-sub">אבל לכם היו תוכניות אחרות:</p>
+        <ol>
+          {slide.lines.map((l, i) => (
+            <li key={i} style={{ animationDelay: `${0.6 + i * 1.6}s` }}>
+              <span dir="auto">{l.text}</span>
+              {l.fooled && <span className="recap-fooled">{l.fooled}: {l.voters.join(', ')}</span>}
+            </li>
+          ))}
+        </ol>
+        <p className="recap-caption" style={{ animationDelay: `${0.8 + slide.lines.length * 1.6}s` }}>{slide.caption}</p>
+      </div>
+    </div>
+  );
 }
 
 function funny(pub: PublicState) {

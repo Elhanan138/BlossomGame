@@ -108,6 +108,17 @@ function Phase({ view, code }: { view: PlayerView; code: string }) {
         </div>
       );
     }
+    case 'RECAP': {
+      const r = pub.recap!;
+      const mine = r.slide.kind === 'award' && r.slide.winners.split(/, | ו/).includes(me.name);
+      return (
+        <div className="center">
+          <p className="big">🍿 מסתכלים על המסך הגדול</p>
+          <p className="muted">שחזור מצחיק של כל מה שהמצאתם · {r.index + 1}/{r.total}</p>
+          {mine && r.slide.kind === 'award' && <p className="mid">{r.slide.emoji} זכית ב"{r.slide.title}"!</p>}
+        </div>
+      );
+    }
     case 'DISCUSSION':
       return <div className="center"><p className="muted">רגע של שיחה 💬</p><p className="big">{pub.question}</p><p className="muted">מסתכלים על המסך הגדול ומדברים. אין חובה לשתף.</p></div>;
   }

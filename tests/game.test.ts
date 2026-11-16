@@ -138,3 +138,20 @@ describe('host controls', () => {
 it('normalize ignores punctuation, spacing and niqqud', () => {
   expect(normalize('  שָׁלוֹם,   עולם!! ')).toBe(normalize('שלום עולם'));
 });
+
+describe('recap', () => {
+  it('tells the story through the interpretations and hands out awards', async () => {
+    const { buildRecap } = await import('../src/server/recap');
+    const slides = buildRecap([
+      { round: 1, image: 'x', prompt: 'פינגווין מאחר לפגישה', artist: 'נועה', correct: ['Dan'], missed: [],
+        answers: [{ text: 'פינגווין בפגישה', authors: ['אבי'], voters: ['מאיה', 'יוסי'] }, { text: 'מלצר בפאניקה', authors: ['מאיה', 'יוסי'], voters: [] }] },
+      { round: 1, image: 'y', prompt: 'בננה שעושה יוגה', artist: 'אבי', correct: [], missed: [],
+        answers: [{ text: 'ירח עייף שמחפש כרית נוחה במיוחד לנמנום', authors: ['נועה'], voters: ['Dan', 'מאיה'] }] },
+    ], () => 0);
+    const json = JSON.stringify(slides);
+    expect(slides[0].kind).toBe('intro');
+    expect(slides.filter((s) => s.kind === 'drawing').length).toBe(2);
+    for (const t of ['פינגווין בפגישה', 'מלצר בפאניקה', 'ירח עייף', 'השקרן', 'התמים', 'עין הנשר', 'פיקאסו', 'גדולים חושבים', 'פרס כמעט', 'הרומן הקצר']) expect(json).toContain(t);
+    expect(buildRecap([])).toEqual([]);
+  });
+});

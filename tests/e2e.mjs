@@ -103,6 +103,20 @@ try {
   await screen.getByText(/טבלת המובילים/).waitFor();
   await shot(screen, '14-screen-results');
   await host.getByRole('button', { name: '⏭ לשלב הבא' }).click();
+  await screen.getByText('מה לעזאזל קרה פה? 🎬').waitFor();
+  await shot(screen, '14b-recap-intro');
+  await host.getByRole('button', { name: '⏭ לשלב הבא' }).click();
+  await screen.getByText('אבל לכם היו תוכניות אחרות:').waitFor();
+  await new Promise((r) => setTimeout(r, 6500));
+  await shot(screen, '14c-recap-story');
+  await shot(phones[0], '14d-phone-recap');
+  for (let i = 0; i < 12 && !(await screen.getByText('הפרס הוא…').isVisible().catch(() => false)); i++) {
+    await host.getByRole('button', { name: '⏭ לשלב הבא' }).click();
+    await new Promise((r) => setTimeout(r, 1300));
+  }
+  await new Promise((r) => setTimeout(r, 1500));
+  await shot(screen, '14e-recap-award');
+  await host.getByRole('button', { name: 'לפודיום 🏆' }).click();
   await screen.getByText('והמנצחים הם… 🎉').waitFor();
   await new Promise((r) => setTimeout(r, 1200));
   await shot(screen, '15-screen-final');
