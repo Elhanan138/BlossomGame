@@ -235,3 +235,16 @@ bdi { unicode-bidi: isolate; }
 .recap-fooled { font-size: .7em; color: var(--warm); font-weight: 800; }
 .recap-caption { font-size: clamp(18px, 2vw, 34px); font-weight: 800; color: #fff; background: var(--warm); border-radius: 14px; padding: 10px 18px; margin: 4px 0 0; animation: pop .6s both; }
 @keyframes slidein { from { transform: translateX(-30px); opacity: 0; } }
+
+/* ---------- comedy recap (phone, after the final leaderboard) ---------- */
+.recap-phone { flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.recap-phone-head { display: flex; justify-content: space-between; align-items: center; }
+.recap-phone-card { flex: 1; min-height: 0; overflow-y: auto; background: #fff; border-radius: var(--r-lg); box-shadow: var(--shadow); padding: 16px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; animation: rise .35s both; }
+.recap-phone-lines { list-style: none; margin: 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: 6px; text-align: start; }
+.recap-phone-lines li { background: var(--bg); border-radius: 12px; padding: 10px 12px; font-weight: 700; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.recap-phone-lines small { color: var(--warm-ink); font-weight: 800; }
+.recap-phone-caption { background: var(--warm); color: #fff; border-radius: 12px; padding: 10px 12px; font-weight: 800; margin: 0; width: 100%; }
+.recap-phone-emoji { font-size: 64px; line-height: 1; animation: pop .6s cubic-bezier(.2, 1.6, .4, 1) both; }
+.recap-phone-winner { font-size: 26px; font-weight: 900; background: var(--g); color: #fff; border-radius: 14px; padding: 4px 16px; margin: 0; overflow-wrap: anywhere; }
+.recap-phone-quote { background: var(--g-soft); color: var(--g-ink); border-radius: 12px; padding: 8px 12px; font-weight: 700; margin: 0; }
+.recap-phone-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
