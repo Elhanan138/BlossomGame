@@ -413,6 +413,12 @@ export class Room {
     this.setTimer(slideSeconds(this.recapSlides[this.recapIndex]));
     this.changed();
   }
+  /** Host: play the recap again on the projector after the podium. */
+  replayRecap() {
+    if (this.phase !== 'FINAL' || !this.recapSlides.length) fail('אין סיכום להציג');
+    this.phase = 'RECAP';
+    this.showSlide(0);
+  }
   prevSlide() {
     if (this.phase !== 'RECAP') fail('אין כרגע סיכום להציג');
     this.showSlide(this.recapIndex - 1);
@@ -482,6 +488,7 @@ export class Room {
       leaderboard: ['ROUND_RESULTS', 'FINAL'].includes(this.phase) ? this.leaderboard : null,
       question: this.phase === 'DISCUSSION' ? this.question : null,
       highlights: this.phase === 'FINAL' ? this.highlights : null,
+      recapAll: this.phase === 'FINAL' && this.recapSlides.length ? this.recapSlides : null,
       recap: this.phase === 'RECAP' && this.recapSlides.length ? { index: this.recapIndex, total: this.recapSlides.length, slide: this.recapSlides[this.recapIndex] } : null,
       expected: exp.length,
       submitted: exp.filter((id) => done.has(id)).length,

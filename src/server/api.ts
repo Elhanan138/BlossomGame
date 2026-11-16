@@ -38,7 +38,9 @@ export async function rpc(store: Store, body: RpcBody, ip = 'local'): Promise<Rp
     const action = String(body?.action ?? '');
     const args = body?.args && typeof body.args === 'object' ? body.args : {};
     const auth = body?.auth && typeof body.auth === 'object' ? body.auth : {};
-    if (limited(ip, 240, 60_000)) fail('יותר מדי פעולות, נסו שוב בעוד רגע');
+    // Per-device limit (polling ≈60/min + actions). Many phones share one office IP, so the IP cap is only a safety net.
+    const who = `${auth.code ?? args.code ?? ''}:${auth.role ?? 'anon'}:${auth.playerId ?? auth.hostToken?.slice(0, 8) ?? ip}`;
+    if (limited(`dev:${who}:${ip}`, 300, 60_000) || limited(`ip:${ip}`, 6000, 60_000)) fail('יותר מדי פעולות, נסו שוב בעוד רגע');
 
     if (action === 'host:create') {
       if (limited(`create:${ip}`, 15, 10 * 60_000)) fail('נפתחו יותר מדי חדרים, נסו שוב בעוד כמה דקות');
@@ -87,6 +89,7 @@ export async function rpc(store: Store, body: RpcBody, ip = 'local'): Promise<Rp
         case 'host:kick': room.kick(String(args.playerId)); delete room.seen[String(args.playerId)]; break;
         case 'host:end': room.finish(); break;
         case 'host:prev': room.prevSlide(); break;
+        case 'host:replayRecap': room.replayRecap(); break;
         case 'host:newGame': room.newGame(); break;
         case 'player:join': {
           const p = room.addPlayer(args.name);

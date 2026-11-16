@@ -121,8 +121,25 @@ try {
   await new Promise((r) => setTimeout(r, 1200));
   await shot(screen, '15-screen-final');
   await shot(phones[1], '16-phone-final');
+  // Phones can browse the comedy recap right after the final leaderboard.
+  await phones[0].getByRole('button', { name: /לסיכום המצחיק/ }).click();
+  await phones[0].getByText('מה לעזאזל קרה פה? 🎬').waitFor();
+  await phones[0].getByRole('button', { name: 'הבא ←' }).click();
+  await phones[0].getByText('אבל לכם היו תוכניות אחרות:').waitFor({ timeout: 2000 }).catch(() => {});
+  await check(phones[0], 'phone recap 320');
+  await shot(phones[0], '17-phone-recap-story');
+  for (let k = 0; k < 15 && await phones[0].getByRole('button', { name: 'הבא ←' }).isVisible(); k++) await phones[0].getByRole('button', { name: 'הבא ←' }).click();
+  await phones[0].getByText('הפרס הוא…').waitFor();
+  await new Promise((r) => setTimeout(r, 900));
+  await check(phones[0], 'phone recap award 320');
+  await shot(phones[0], '18-phone-recap-award');
+  await phones[0].getByRole('button', { name: 'סיימתי 🏆' }).click();
+  await host.getByRole('button', { name: /הצגת הסיכום המצחיק שוב/ }).click();
+  await screen.getByText('מה לעזאזל קרה פה? 🎬').waitFor();
+  await host.getByRole('button', { name: 'לפודיום 🏆' }).click();
+  await screen.getByText('והמנצחים הם… 🎉').waitFor();
   await host.getByRole('button', { name: 'משחק חדש עם אותה חבורה' }).click();
-  await screen.getByText('סורקים ומצטרפים!').waitFor();
+  await screen.getByText('סורקים ומצטרפים!').waitFor({ timeout: 8000 }).catch(async (e) => { await shot(screen, 'fail-screen'); await shot(host, 'fail-host'); throw e; });
   for (const w of [1024, 1280]) { await host.setViewportSize({ width: w, height: 800 }); await check(host, `host ${w}`); }
   await browser.close();
   if (errors.length) fail('Console errors:\n' + errors.join('\n'));

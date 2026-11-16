@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type F
 import { go, imgUrl, keys, store, useRoom } from './net';
 import { Brand, ConnBanner, Drawing, Timer, pts } from './ui';
 import DrawCanvas, { exportImage } from './DrawCanvas';
+import RecapPhone from './RecapPhone';
 import type { PlayerView } from '../shared/types';
 
 type Act = (action: string, args?: object) => Promise<any>;
@@ -93,21 +94,8 @@ function Phase({ view, code }: { view: PlayerView; code: string }) {
       );
     }
     case 'ROUND_RESULTS':
-    case 'FINAL': {
-      const lb = pub.leaderboard ?? [];
-      const mine = lb.find((l) => l.playerId === me.playerId);
-      const medal = ['🥇', '🥈', '🥉'][mine ? mine.rank - 1 : 9] ?? '';
-      return (
-        <div className="center" style={{ justifyContent: 'flex-start' }}>
-          <p className="muted">{pub.phase === 'FINAL' ? 'המשחק נגמר!' : `סוף סבב ${pub.round}`}</p>
-          <p className="big">המקום שלך: {mine?.rank ?? '-'} {medal}</p>
-          <div className="rank-list">
-            {lb.map((l) => <div key={l.playerId} className={`rank-row${l.playerId === me.playerId ? ' me' : ''}`}><span className="n">{l.rank}</span><span className="name"><bdi>{l.name}</bdi></span><span className="pts">{pts(l.score)}</span></div>)}
-          </div>
-          {pub.phase === 'FINAL' && <p className="muted">לא בטוח שלמדנו לצייר, אבל בהחלט למדנו משהו על הדמיון שלכם.</p>}
-        </div>
-      );
-    }
+    case 'FINAL':
+      return <Board view={view} />;
     case 'RECAP': {
       const r = pub.recap!;
       const mine = r.slide.kind === 'award' && r.slide.winners.split(/, | ו/).includes(me.name);
@@ -122,6 +110,26 @@ function Phase({ view, code }: { view: PlayerView; code: string }) {
     case 'DISCUSSION':
       return <div className="center"><p className="muted">רגע של שיחה 💬</p><p className="big">{pub.question}</p><p className="muted">מסתכלים על המסך הגדול ומדברים. אין חובה לשתף.</p></div>;
   }
+}
+
+function Board({ view }: { view: PlayerView }) {
+  const { pub, me } = view;
+  const [recap, setRecap] = useState(false);
+  if (recap && pub.recapAll) return <RecapPhone slides={pub.recapAll} onClose={() => setRecap(false)} />;
+  const lb = pub.leaderboard ?? [];
+  const mine = lb.find((l) => l.playerId === me.playerId);
+  const medal = ['🥇', '🥈', '🥉'][mine ? mine.rank - 1 : 9] ?? '';
+  return (
+    <div className="center" style={{ justifyContent: 'flex-start' }}>
+      <p className="muted">{pub.phase === 'FINAL' ? 'המשחק נגמר!' : `סוף סבב ${pub.round}`}</p>
+      <p className="big">המקום שלך: {mine?.rank ?? '-'} {medal}</p>
+      <div className="rank-list">
+        {lb.map((l) => <div key={l.playerId} className={`rank-row${l.playerId === me.playerId ? ' me' : ''}`}><span className="n">{l.rank}</span><span className="name"><bdi>{l.name}</bdi></span><span className="pts">{pts(l.score)}</span></div>)}
+      </div>
+      {pub.recapAll && <button type="button" className="btn warm block" onClick={() => setRecap(true)}>😂 לסיכום המצחיק של המשחק</button>}
+      {pub.phase === 'FINAL' && <p className="muted">לא בטוח שלמדנו לצייר, אבל בהחלט למדנו משהו על הדמיון שלכם.</p>}
+    </div>
+  );
 }
 
 function ArtistWait({ pub, text }: { pub: PlayerView['pub']; text: string }) {

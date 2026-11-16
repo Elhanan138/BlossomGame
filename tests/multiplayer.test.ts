@@ -85,6 +85,15 @@ it('9 players play a complete game with concurrent actions', async () => {
   rc = (await call<{ view: PublicState }>('state', {}, screen)).view;
   expect(rc.phase).toBe('FINAL');
   const fin = rc;
+  expect(fin.recapAll!.length).toBe(rc.recapAll!.length);
+  expect(fin.recapAll!.length).toBeGreaterThan(3);
+  const pv = (await call<{ view: PlayerView }>('state', {}, players[0].auth)).view;
+  expect(pv.pub.recapAll![0].kind).toBe('intro');
+  await expect(call('host:replayRecap', {}, screen)).rejects.toThrow(/מנחה/);
+  await call('host:replayRecap', {}, host);
+  expect((await call<{ view: PublicState }>('state', {}, screen)).view.phase).toBe('RECAP');
+  await call('host:end', {}, host);
+  expect((await call<{ view: PublicState }>('state', {}, screen)).view.phase).toBe('FINAL');
   await call('host:newGame', {}, host);
   const again = (await call<{ view: HostView }>('state', {}, host)).view;
   expect(again.pub.phase).toBe('LOBBY');
@@ -104,3 +113,19 @@ it('timers advance lazily on the next request and silent players disconnect', as
   expect(v.pub.phase).toBe('ANSWERING');
   expect(ps.length).toBe(3);
 });
+
+it('14 devices behind one office IP can poll every second without being rate-limited', async () => {
+  const { code, hostToken } = await call('host:create', {});
+  const ip = 'office-nat';
+  const devices = [{ code, role: 'host', hostToken }, { code, role: 'screen' }];
+  for (let i = 0; i < 12; i++) {
+    const r = await rpc(store, { action: 'player:join', args: { name: `p${i}` }, auth: { code } }, ip);
+    if (!r.ok) throw new Error(r.error);
+    devices.push({ code, role: 'player', playerId: (r as any).playerId, token: (r as any).token } as any);
+  }
+  // 90 seconds of polling from all devices, all from the same IP.
+  for (let s = 0; s < 90; s++) {
+    const res = await Promise.all(devices.map((auth) => rpc(store, { action: 'state', auth: auth as any }, ip)));
+    expect(res.every((r) => r.ok)).toBe(true);
+  }
+}, 60000);

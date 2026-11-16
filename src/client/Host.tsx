@@ -144,6 +144,7 @@ function InGame({ view, act }: { view: HostView; act: Act }) {
         {pub.phase === 'FINAL' ? (
           <div className="controls">
             <button className="btn" onClick={() => act('host:newGame')}>משחק חדש עם אותה חבורה</button>
+            {pub.recapAll && <button className="btn warm" onClick={() => act('host:replayRecap')}>😂 הצגת הסיכום המצחיק שוב במקרן</button>}
           </div>
         ) : (
           <div className="controls">

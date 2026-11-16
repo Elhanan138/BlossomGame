@@ -115,6 +115,7 @@ export interface PublicState {
   question: string | null; // DISCUSSION
   highlights: FinalHighlights | null; // FINAL
   recap: { index: number; total: number; slide: RecapSlide } | null; // RECAP
+  recapAll: RecapSlide[] | null; // FINAL: whole recap, browsable on phones
   expected: number; // how many submissions this phase expects
   submitted: number;
 }
