@@ -3,7 +3,7 @@ import { go, keys, store, useRoom } from './net';
 import { useMemo } from 'react';
 import { Brand, ConnBanner, QR, Timer, joinUrl } from './ui';
 import ScreenView from './ScreenView';
-import type { GameSettings, HostView } from '../shared/types';
+import { LIMITS, type GameSettings, type HostView } from '../shared/types';
 
 const PHASE_LABEL: Record<string, string> = {
   LOBBY: 'לובי', DRAWING: 'ציור', ANSWERING: 'המצאת תשובות', VOTING: 'הצבעה', REVEAL: 'חשיפה',
@@ -75,7 +75,7 @@ function Lobby({ view, act }: { view: HostView; act: Act }) {
           </div>
           <label className="switch full"><input type="checkbox" checked={s.autoAdvance} onChange={(e) => set({ autoAdvance: e.target.checked })} />מעבר אוטומטי אחרי חשיפה ותוצאות</label>
         </div>
-        <div className="estimate" style={{ marginTop: 14 }}><span>משך משוער ל-{Math.max(pub.players.length, 3)} משתתפים</span><b>~{view.estimateMinutes} דק׳</b></div>
+        <div className="estimate" style={{ marginTop: 14 }}><span>משך משוער ל-{Math.max(pub.players.length, LIMITS.minPlayers)} משתתפים</span><b>~{view.estimateMinutes} דק׳</b></div>
       </section>
 
       <section className="card" aria-labelledby="pl-h" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -98,7 +98,7 @@ function Lobby({ view, act }: { view: HostView; act: Act }) {
             </li>
           ))}
         </ul>
-        <button className="btn block" disabled={connected < 3} onClick={() => act('host:start')}>{connected < 3 ? `צריך עוד ${3 - connected} משתתפים` : `מתחילים! (${connected} משתתפים)`}</button>
+        <button className="btn block" disabled={connected < LIMITS.minPlayers} onClick={() => act('host:start')}>{connected < LIMITS.minPlayers ? `צריך עוד ${LIMITS.minPlayers - connected === 1 ? 'משתתף אחד' : `${LIMITS.minPlayers - connected} משתתפים`}` : `מתחילים! (${connected} משתתפים)`}</button>
       </section>
     </div>
   );

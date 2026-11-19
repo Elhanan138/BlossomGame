@@ -45,7 +45,7 @@ export const DEFAULT_SETTINGS: GameSettings = {
 };
 
 export const LIMITS = {
-  minPlayers: 3,
+  minPlayers: 2,
   maxPlayers: 12,
   nameMax: 20,
   answerMax: 100,
