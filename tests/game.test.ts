@@ -32,10 +32,33 @@ const nonArtists = (room: Room, ps: { id: string }[]) => ps.filter((p) => p.id !
 
 describe('lobby', () => {
   it('rejects duplicate names, empty names and too few players', () => {
-    const { room } = setup(2);
+    const { room } = setup(1);
     expect(() => room.addPlayer('שחקן 1')).toThrow(/תפוס/);
     expect(() => room.addPlayer('  ')).toThrow();
-    expect(() => room.start()).toThrow(/לפחות/);
+    expect(() => room.start()).toThrow(/לפחות 2/);
+  });
+  it('two players can play a full game: real choice in every vote, recap, podium', () => {
+    const { room, ps } = setup(2);
+    room.start();
+    ps.forEach((p) => room.submitDrawing(p.id, IMG));
+    for (let d = 0; d < 2; d++) {
+      expect(room.phase).toBe('ANSWERING');
+      const [guesser] = nonArtists(room, ps);
+      room.submitAnswer(guesser.id, `ניחוש ${d}`);
+      expect(room.phase).toBe('VOTING');
+      const choices = room.options.filter((o) => !o.authorIds.includes(guesser.id));
+      expect(choices.length).toBeGreaterThanOrEqual(2); // truth + house decoy
+      room.vote(guesser.id, choices.find((o) => o.isTruth)!.id);
+      expect(room.phase).toBe('REVEAL');
+      room.endPhase();
+    }
+    expect(room.phase).toBe('ROUND_RESULTS');
+    room.endPhase();
+    expect(room.phase).toBe('RECAP');
+    room.finish();
+    expect(room.phase).toBe('FINAL');
+    expect(room.players.get(ps[0].id)!.score).toBe(1000);
+    expect(room.players.get(ps[1].id)!.score).toBe(1000);
   });
   it('closes the room once started', () => {
     const { room } = setup(3);

@@ -1,4 +1,4 @@
-import type { PublicState } from '../shared/types';
+import { LIMITS, type PublicState } from '../shared/types';
 import { Brand, Drawing, QR, Timer, joinUrl, pts } from './ui';
 import { imgUrl } from './net';
 
@@ -40,7 +40,7 @@ function Body({ pub, progress }: { pub: PublicState; progress: React.ReactNode }
               <span className="room-code">{pub.code}</span>
             </div>
           </div>
-          <div className="status-line"><span>הצטרפו {pub.players.length} · אפשר 3–12 משתתפים</span></div>
+          <div className="status-line"><span>הצטרפו {pub.players.length} · אפשר {LIMITS.minPlayers}–{LIMITS.maxPlayers} משתתפים</span></div>
           <div className="chips">{pub.players.map((p) => <span key={p.id} className="chip done"><bdi>{p.name}</bdi></span>)}</div>
         </>
       );
